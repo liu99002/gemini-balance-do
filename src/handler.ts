@@ -1223,7 +1223,7 @@ export class LoadBalancer extends DurableObject {
 
 			return null;
 		} catch (error) {
-			console.error('获取随机API密钥失败:', error);
+			console.error('取得 API Key 失敗:', error);
 			return null;
 		}
 	}
