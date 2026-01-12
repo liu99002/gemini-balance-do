@@ -1174,35 +1174,39 @@ export class LoadBalancer extends DurableObject {
 
 	private async getRandomApiKey(): Promise<string | null> {
 		try {
-			// --- 修改開始 ---
-        
-	        // 1. 取得目前的輪詢索引 (預設為 0)
-	        let currentIndex = (await this.ctx.storage.get<number>('rr_index')) || 0;
-	
-	        // 2. 嘗試從 'normal' 群組依序取得 Key (使用 OFFSET)
-	        // 改用 ORDER BY api_key ASC (固定排序) 並配合 OFFSET
-	        let results = await this.ctx.storage.sql
-	            .exec("SELECT api_key FROM api_key_statuses WHERE key_group = 'normal' ORDER BY api_key ASC LIMIT 1 OFFSET ?", currentIndex)
-	            .raw<any>();
-	
-	        // 3. 如果取不到資料 (表示索引超出範圍)，則歸零重試
-	        if (Array.from(results).length === 0) {
-	            currentIndex = 0;
-	            results = await this.ctx.storage.sql
-	                .exec("SELECT api_key FROM api_key_statuses WHERE key_group = 'normal' ORDER BY api_key ASC LIMIT 1 OFFSET 0")
-	                .raw<any>();
-	        }
-	
-	        // 4. 更新索引到下一個位置
-	        await this.ctx.storage.put('rr_index', currentIndex + 1);
-	
-	        // 5. 處理結果
-	        let keys = Array.from(results);
-	        if (keys && keys.length > 0) {
-	            const key = keys[0][0] as string;
-	            console.log(`Gemini Selected API Key (Round-Robin): ${key}`);
-	            return key;
-	        }
+			// 1. 取得目前的輪詢索引
+			let currentIndex = (await this.ctx.storage.get<number>('rr_index')) || 0;
+
+			// 2. 查詢資料
+			let results = await this.ctx.storage.sql
+				.exec("SELECT api_key FROM api_key_statuses WHERE key_group = 'normal' ORDER BY api_key ASC LIMIT 1 OFFSET ?", currentIndex)
+				.raw<any>();
+
+			// --- 修正重點：將結果轉換為陣列並存入變數，避免重複消耗迭代器 ---
+			let keys = Array.from(results);
+
+			// 3. 如果取不到資料 (表示索引超出範圍)，則歸零重試
+			if (keys.length === 0) {
+				currentIndex = 0;
+				// 重新查詢第一筆 (Offset 0)
+				results = await this.ctx.storage.sql
+					.exec("SELECT api_key FROM api_key_statuses WHERE key_group = 'normal' ORDER BY api_key ASC LIMIT 1 OFFSET 0")
+					.raw<any>();
+				
+				// 再次轉換為陣列
+				keys = Array.from(results);
+			}
+
+			// 4. 更新索引 (指向下一筆)
+			await this.ctx.storage.put('rr_index', currentIndex + 1);
+
+			// 5. 處理結果 (直接使用已經轉換好的 keys 陣列)
+			if (keys.length > 0) {
+				const key = keys[0][0] as string;
+				// 建議只印出後幾碼以策安全
+				console.log(`Gemini Selected API Key (Round-Robin): ...${key.slice(-4)}`);
+				return key;
+			}
 
 			// If no keys in normal group, try the abnormal group
 			results = await this.ctx.storage.sql
