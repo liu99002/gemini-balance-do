@@ -1208,14 +1208,16 @@ export class LoadBalancer extends DurableObject {
 				return key;
 			}
 
-			// If no keys in normal group, try the abnormal group
-			results = await this.ctx.storage.sql
+			// --- 以下維持原本的異常群組備援邏輯 ---
+			let abnormalResults = await this.ctx.storage.sql
 				.exec("SELECT api_key FROM api_key_statuses WHERE key_group = 'abnormal' ORDER BY RANDOM() LIMIT 1")
 				.raw<any>();
-			keys = Array.from(results);
-			if (keys && keys.length > 0) {
-				const key = keys[0][0] as string;
-				console.log(`Gemini Selected API Key from abnormal group: ${key}`);
+			
+			let abnormalKeys = Array.from(abnormalResults);
+			
+			if (abnormalKeys.length > 0) {
+				const key = abnormalKeys[0][0] as string;
+				console.log(`Gemini Selected API Key from abnormal group: ...${key.slice(-4)}`);
 				return key;
 			}
 
